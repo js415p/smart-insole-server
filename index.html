@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>스마트 인솔 대시보드</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d0f14;
+      color: #e2e8f0;
+      font-family: 'Malgun Gothic', 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+
+    header .dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 8px #22c55e;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    header h1 { font-size: 1.2rem; font-weight: 600; color: #f1f5f9; }
+    header span { margin-left: auto; font-size: 0.75rem; color: #64748b; }
+
+    /* 전체 그리드 */
+    .grid {
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      grid-template-rows: auto 1fr;
+      gap: 20px;
+    }
+
+    .card {
+      background: #141720;
+      border: 1px solid #1e2330;
+      border-radius: 16px;
+      padding: 22px;
+    }
+
+    .card-title {
+      font-size: 0.67rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #475569;
+      margin-bottom: 18px;
+    }
+
+    #heatmap-card { grid-row: 1 / 3; }
+
+    .both-feet {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+    }
+
+    .foot-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .foot-side-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 3px 12px;
+      border-radius: 20px;
+    }
+
+    .foot-side-label.left  { background: #1e3a5f; color: #60a5fa; }
+    .foot-side-label.right { background: #3b1f1f; color: #f87171; }
+
+    .foot-wrap {
+      position: relative;
+      width: 140px;
+      height: 280px;
+      flex-shrink: 0;
+    }
+
+    .foot-wrap.mirror { transform: scaleX(-1); }
+
+    .foot-svg { width: 100%; height: 100%; }
+
+    /* 압력 포인트 */
+    .pressure-point {
+      position: absolute;
+      width: 46px; height: 46px;
+      border-radius: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: #fff;
+      text-align: center;
+      line-height: 1.2;
+      cursor: default;
+      transition: background 0.4s, box-shadow 0.4s;
+      transform: translate(-50%, -50%);
+    }
+
+    /* 오른발은 wrapper가 scaleX(-1)이므로 텍스트만 다시 뒤집기 */
+    .foot-wrap.mirror .pressure-point { transform: translate(-50%, -50%) scaleX(-1); }
+
+    .pressure-point .pt-ch    { font-size: 0.48rem; opacity: 0.75; margin-bottom: 1px; }
+    .pressure-point .pt-label { font-size: 0.5rem;  opacity: 0.9; }
+    .pressure-point .pt-value { font-size: 0.78rem; }
+
+    .point-toe   { top: 12%; left: 50%; }
+    .point-inner { top: 38%; left: 34%; }
+    .point-outer { top: 42%; left: 67%; }
+    .point-heel  { top: 84%; left: 50%; }
+
+    /* 왼발 색상 (CH0~3): 파랑 계열 */
+    .left-foot .point-toe   { background: #2563eb; box-shadow: 0 0 12px #2563eb90; }
+    .left-foot .point-inner { background: #0891b2; box-shadow: 0 0 12px #0891b290; }
+    .left-foot .point-outer { background: #0284c7; box-shadow: 0 0 12px #0284c790; }
+    .left-foot .point-heel  { background: #1d4ed8; box-shadow: 0 0 12px #1d4ed890; }
+
+    /* 오른발 색상 (CH4~7): 붉은 계열 */
+    .right-foot .point-toe   { background: #dc2626; box-shadow: 0 0 12px #dc262690; }
+    .right-foot .point-inner { background: #d97706; box-shadow: 0 0 12px #d9770690; }
+    .right-foot .point-outer { background: #b45309; box-shadow: 0 0 12px #b4530990; }
+    .right-foot .point-heel  { background: #991b1b; box-shadow: 0 0 12px #991b1b90; }
+
+    /* 채널 범례 테이블 */
+    .legend {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 16px;
+      margin-top: 20px;
+    }
+
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.68rem;
+      color: #94a3b8;
+    }
+
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+    .legend-info { display: flex; flex-direction: column; flex: 1; gap: 2px; }
+
+    .legend-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .legend-ch   { font-size: 0.6rem; color: #475569; }
+    .legend-name { color: #cbd5e1; }
+    .legend-kpa  { font-weight: 600; color: #e2e8f0; font-size: 0.72rem; }
+
+    .legend-bar-wrap {
+      height: 4px;
+      background: #1e2330;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .legend-bar { height: 100%; border-radius: 2px; transition: width 0.5s; }
+
+    /* ── 걸음 수 카드 ── */
+    #steps-card { display: flex; flex-direction: column; gap: 20px; }
+
+    .steps-main { display: flex; align-items: flex-end; gap: 8px; }
+
+    .steps-number {
+      font-size: 3.2rem; font-weight: 700; line-height: 1;
+      color: #f1f5f9; letter-spacing: -0.02em;
+    }
+
+    .steps-unit { font-size: 0.95rem; color: #64748b; padding-bottom: 5px; }
+
+    .steps-meta { display: flex; gap: 20px; }
+
+    .meta-item { display: flex; flex-direction: column; gap: 4px; }
+    .meta-label { font-size: 0.63rem; color: #475569; }
+    .meta-value { font-size: 0.95rem; font-weight: 600; color: #cbd5e1; }
+
+    /* 좌우 균형 바 */
+    .balance-section { display: flex; flex-direction: column; gap: 8px; }
+
+    .balance-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.68rem;
+      color: #475569;
+    }
+
+    .balance-bar-wrap {
+      display: flex;
+      height: 8px;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .balance-left  { background: #2563eb; transition: width 0.6s; }
+    .balance-right { background: #dc2626; transition: width 0.6s; flex: 1; }
+
+    .balance-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.65rem;
+    }
+
+    .balance-labels .bl { color: #60a5fa; font-weight: 600; }
+    .balance-labels .br { color: #f87171; font-weight: 600; }
+
+    /* ── 압력 이력 카드 ── */
+    #history-card { display: flex; flex-direction: column; }
+
+    /* 체크박스 패널 */
+    .cb-panel {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 12px;
+      margin-bottom: 14px;
+      padding: 12px 14px;
+      background: #0d0f14;
+      border: 1px solid #1e2330;
+      border-radius: 10px;
+    }
+
+    .cb-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .cb-group-label {
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: #334155;
+      margin-bottom: 2px;
+    }
+
+    .cb-row { display: flex; gap: 8px; }
+
+    .cb-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      user-select: none;
+      font-size: 0.68rem;
+      color: #94a3b8;
+      transition: color 0.2s;
+      flex: 1;
+    }
+
+    .cb-item:hover { color: #e2e8f0; }
+
+    /* 숨겨진 네이티브 체크박스 */
+    .cb-item input[type="checkbox"] { display: none; }
+
+    /* 커스텀 체크박스 박스 */
+    .cb-box {
+      width: 14px; height: 14px;
+      border-radius: 3px;
+      border: 1.5px solid currentColor;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.2s;
+    }
+
+    .cb-item input:checked ~ .cb-box { background: currentColor; }
+
+    .cb-box::after {
+      content: '';
+      width: 7px; height: 4px;
+      border-left: 2px solid #0d0f14;
+      border-bottom: 2px solid #0d0f14;
+      transform: rotate(-45deg) translateY(-1px);
+      display: none;
+    }
+
+    .cb-item input:checked ~ .cb-box::after { display: block; }
+
+    /* 선 스타일 미리보기 */
+    .cb-line {
+      width: 18px; height: 2px;
+      border-radius: 1px;
+      flex-shrink: 0;
+    }
+
+    .cb-line.dashed {
+      background: none !important;
+      border-top: 2px dashed currentColor;
+      height: 0;
+    }
+
+    /* 비활성 상태 */
+    .cb-item.off { color: #2a3040; }
+    .cb-item.off .cb-line { opacity: 0.2; }
+
+    .chart-wrap { flex: 1; position: relative; min-height: 190px; }
+
+    @media (max-width: 780px) {
+      .grid { grid-template-columns: 1fr; }
+      #heatmap-card { grid-row: auto; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="dot"></div>
+  <h1>스마트 인솔 대시보드</h1>
+  <span>기기 연결 안 됨</span>
+</header>
+
+<div class="grid">
+
+  <!-- ── 1. 실시간 압력 히트맵 ── -->
+  <div class="card" id="heatmap-card">
+    <div class="card-title">실시간 압력 히트맵</div>
+
+    <div class="both-feet">
+
+      <!-- 왼발~CH3 -->
+      <div class="foot-col">
+        <span class="foot-side-label left">왼발</span>
+        <div class="foot-wrap left-foot">
+          <svg class="foot-svg" viewBox="0 0 160 320" xmlns="http://www.w3.org/2000/svg">
+            <path d="M60,10 C40,10 28,30 28,55 C28,80 32,110 36,140
+                     C38,158 36,175 34,195 C30,230 28,260 30,280
+                     C32,300 44,312 60,312 C76,312 100,310 110,300
+                     C120,290 124,270 122,250 C120,230 112,212 108,195
+                     C104,175 104,155 106,138
+                     C110,108 116,80 116,55
+                     C116,30 104,10 80,10 Z"
+              fill="#1a1f2e" stroke="#2a3040" stroke-width="1.5"/>
+          </svg>
+          <div class="pressure-point point-toe">
+            <span class="pt-ch">CH0</span>
+            <span class="pt-label">발가락</span>
+            <span class="pt-value">38 kPa</span>
+          </div>
+          <div class="pressure-point point-inner">
+            <span class="pt-ch">CH1</span>
+            <span class="pt-label">안쪽</span>
+            <span class="pt-value">85 kPa</span>
+          </div>
+          <div class="pressure-point point-outer">
+            <span class="pt-ch">CH2</span>
+            <span class="pt-label">바깥쪽</span>
+            <span class="pt-value">64 kPa</span>
+          </div>
+          <div class="pressure-point point-heel">
+            <span class="pt-ch">CH3</span>
+            <span class="pt-label">뒤꿈치</span>
+            <span class="pt-value">128 kPa</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 오른발~CH7 (좌우 대칭) -->
+      <div class="foot-col">
+        <span class="foot-side-label right">오른발</span>
+        <div class="foot-wrap mirror right-foot">
+          <svg class="foot-svg" viewBox="0 0 160 320" xmlns="http://www.w3.org/2000/svg">
+            <path d="M60,10 C40,10 28,30 28,55 C28,80 32,110 36,140
+                     C38,158 36,175 34,195 C30,230 28,260 30,280
+                     C32,300 44,312 60,312 C76,312 100,310 110,300
+                     C120,290 124,270 122,250 C120,230 112,212 108,195
+                     C104,175 104,155 106,138
+                     C110,108 116,80 116,55
+                     C116,30 104,10 80,10 Z"
+              fill="#1a1f2e" stroke="#2a3040" stroke-width="1.5"/>
+          </svg>
+          <div class="pressure-point point-toe">
+            <span class="pt-ch">CH4</span>
+            <span class="pt-label">발가락</span>
+            <span class="pt-value">45 kPa</span>
+          </div>
+          <div class="pressure-point point-inner">
+            <span class="pt-ch">CH5</span>
+            <span class="pt-label">안쪽</span>
+            <span class="pt-value">92 kPa</span>
+          </div>
+          <div class="pressure-point point-outer">
+            <span class="pt-ch">CH6</span>
+            <span class="pt-label">바깥쪽</span>
+            <span class="pt-value">78 kPa</span>
+          </div>
+          <div class="pressure-point point-heel">
+            <span class="pt-ch">CH7</span>
+            <span class="pt-label">뒤꿈치</span>
+            <span class="pt-value">141 kPa</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /.both-feet -->
+
+    <!-- 채널 범례 -->
+    <div class="legend">
+      <!-- 왼발 -->
+      <div class="legend-row">
+        <div class="legend-dot" style="background:#2563eb;"></div>
+        <div class="legend-info">
+          <div class="legend-top">
+            <span><span class="legend-ch">CH0</span> <span class="legend-name">왼발 발가락</span></span>
+            <span class="legend-kpa">38 kPa</span>
+          </div>
+          <div class="legend-bar-wrap"><div class="legend-bar" style="width:22%;background:#2563eb;"></div></div>
+        </div>
+      </div>
+      <div class="legend-row">
+        <div class="legend-dot" style="background:#dc2626;"></div>
+        <div class="legend-info">
+          <div class="legend-top">
+            <span><span class="legend-ch">CH4</span> <span class="legend-name">오른발 발가락</span></span>
+            <span class="legend-kpa">45 kPa</span>
+          </div>
+          <div class="legend-bar-wrap"><div class="legend-bar" style="width:26%;background:#dc2626;"></div></div>
+        </div>
+      </div>
+
+      <div class="legend-row">
+        <div class="legend-dot" style="background:#0891b2;"></div>
+        <div class="legend-info">
+          <div class="legend-top">
+            <span><span class="legend-ch">CH1</span> <span class="legend-name">왼발 안쪽</span></span>
+            <span class="legend-kpa">85 kPa</span>
+          </div>
+          <div class="legend-bar-wrap"><div class="legend-bar" style="width:49%;background:#0891b2;"></div></div>
+        </div>
+      </div>
+      <div class="legend-row">
+        <div class="legend-dot" style="background:#d97706;"></div>
+        <div class="legend-info">
+          <div class="legend-top">
+            <span><span class="legend-ch">CH5</span> <span class="legend-name">오른발 안쪽</span></span>
+            <span class="legend-kpa">92 kPa</span>
+          </div>
+          <div class="legend-bar-wrap"><div class="legend-bar" style="width:54%;background:#d97706;"></div></div>
+        </div>
+      </div>
+
+      <div class="legend-row">
+        <div class="legend-dot" style="background:#0284c7;"></div>
+        <div class="legend-info">
+          <div class="legend-top">
+            <span><span class="legend-ch">CH2</span> <span class="legend-name">왼발 바깥쪽</span></span>
+            <span class="legend-kpa">64 kPa</span>
+          </div>
+          <div class="legend-bar-wrap"><div class="legend-bar" style="width:37%;background:#0284c7;"></div></div>
+        </div>
+      </div>
+      <div class="legend-row">
+        <div class="legend-dot" style="background:#b45309;"></div>
+        <div class="legend-info">
+          <div class="legend-top">
+            <span><span class="legend-ch">CH6</span> <span class="legend-name">오른발 바깥쪽</span></span>
+            <span class="legend-kpa">78 kPa</span>
+          </div>
+          <div class="legend-bar-wrap"><div class="legend-bar" style="width:45%;background:#b45309;"></div></div>
+        </div>
+      </div>
+
+      <div class="legend-row">
+        <div class="legend-dot" style="background:#1d4ed8;"></div>
+        <div class="legend-info">
+          <div class="legend-top">
+            <span><span class="legend-ch">CH3</span> <span class="legend-name">왼발 뒤꿈치</span></span>
+            <span class="legend-kpa">128 kPa</span>
+          </div>
+          <div class="legend-bar-wrap"><div class="legend-bar" style="width:74%;background:#1d4ed8;"></div></div>
+        </div>
+      </div>
+      <div class="legend-row">
+        <div class="legend-dot" style="background:#991b1b;"></div>
+        <div class="legend-info">
+          <div class="legend-top">
+            <span><span class="legend-ch">CH7</span> <span class="legend-name">오른발 뒤꿈치</span></span>
+            <span class="legend-kpa">141 kPa</span>
+          </div>
+          <div class="legend-bar-wrap"><div class="legend-bar" style="width:82%;background:#991b1b;"></div></div>
+        </div>
+      </div>
+    </div><!-- /.legend -->
+
+  </div><!-- /#heatmap-card -->
+
+  <!-- ── 2. 걸음 수 ── -->
+  <div class="card" id="steps-card">
+    <div class="card-title">걸음 수</div>
+
+    <div class="steps-main">
+      <div class="steps-number">6,284</div>
+      <div class="steps-unit">걸음</div>
+    </div>
+
+    <div class="steps-meta">
+      <div class="meta-item">
+        <span class="meta-label">압력 불균형률</span>
+        <span class="meta-value">18.4 %</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">최대 압력</span>
+        <span class="meta-value">141 kPa <span style="font-size:0.65rem;color:#f87171;">(CH7)</span></span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">과부하 경고</span>
+        <span class="meta-value" style="color:#f59e0b;">3 회</span>
+      </div>
+    </div>
+
+    <!-- 좌우 체중 분산 -->
+    <div class="balance-section">
+      <div class="balance-header">
+        <span>좌우 체중 분산</span>
+        <span>CH0~3 / CH4~7</span>
+      </div>
+      <div class="balance-bar-wrap">
+        <div class="balance-left"  style="width:47%;"></div>
+        <div class="balance-right"></div>
+      </div>
+      <div class="balance-labels">
+        <span class="bl">왼발 47%</span>
+        <span class="br">오른발 53%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 3. 시간대별 압력 이력 ── -->
+  <div class="card" id="history-card">
+    <div class="card-title">시간대별 압력 이력 (kPa)</div>
+
+    <!-- 부위별 체크박스 패널 -->
+    <div class="cb-panel">
+
+      <div class="cb-group">
+        <div class="cb-group-label">뒤꿈치</div>
+        <div class="cb-row">
+          <label class="cb-item" style="color:#3b82f6;" data-idx="0">
+            <input type="checkbox" checked />
+            <span class="cb-box"></span>
+            <span class="cb-line" style="background:#3b82f6;"></span>
+            왼발
+          </label>
+          <label class="cb-item" style="color:#f87171;" data-idx="1">
+            <input type="checkbox" checked />
+            <span class="cb-box"></span>
+            <span class="cb-line dashed" style="border-color:#f87171;"></span>
+            오른발
+          </label>
+        </div>
+      </div>
+
+      <div class="cb-group">
+        <div class="cb-group-label">안쪽</div>
+        <div class="cb-row">
+          <label class="cb-item" style="color:#22d3ee;" data-idx="2">
+            <input type="checkbox" checked />
+            <span class="cb-box"></span>
+            <span class="cb-line" style="background:#22d3ee;"></span>
+            왼발
+          </label>
+          <label class="cb-item" style="color:#fb923c;" data-idx="3">
+            <input type="checkbox" checked />
+            <span class="cb-box"></span>
+            <span class="cb-line dashed" style="border-color:#fb923c;"></span>
+            오른발
+          </label>
+        </div>
+      </div>
+
+      <div class="cb-group">
+        <div class="cb-group-label">바깥쪽</div>
+        <div class="cb-row">
+          <label class="cb-item" style="color:#818cf8;" data-idx="4">
+            <input type="checkbox" checked />
+            <span class="cb-box"></span>
+            <span class="cb-line" style="background:#818cf8;"></span>
+            왼발
+          </label>
+          <label class="cb-item" style="color:#fbbf24;" data-idx="5">
+            <input type="checkbox" checked />
+            <span class="cb-box"></span>
+            <span class="cb-line dashed" style="border-color:#fbbf24;"></span>
+            오른발
+          </label>
+        </div>
+      </div>
+
+      <div class="cb-group">
+        <div class="cb-group-label">발가락</div>
+        <div class="cb-row">
+          <label class="cb-item" style="color:#6ee7b7;" data-idx="6">
+            <input type="checkbox" checked />
+            <span class="cb-box"></span>
+            <span class="cb-line" style="background:#6ee7b7;"></span>
+            왼발
+          </label>
+          <label class="cb-item" style="color:#fca5a5;" data-idx="7">
+            <input type="checkbox" checked />
+            <span class="cb-box"></span>
+            <span class="cb-line dashed" style="border-color:#fca5a5;"></span>
+            오른발
+          </label>
+        </div>
+      </div>
+
+    </div><!-- /.cb-panel -->
+
+    <div class="chart-wrap">
+      <canvas id="historyChart"></canvas>
+    </div>
+  </div>
+
+</div><!-- /.grid -->
+
+<script>
+  const labels = ['08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00'];
+
+  // CH0~3: 왼발, CH4~7: 오른발 (kPa)
+  const data = {
+    CH0: [35, 32, 42, 38, 46, 40, 50, 44, 36, 33, 38],  // 왼발 발가락
+    CH1: [78, 85, 93, 82, 88, 99, 95, 90, 83, 92, 80],  // 왼발 안쪽
+    CH2: [60, 68, 65, 71, 58, 78, 70, 74, 63, 67, 61],  // 왼발 바깥쪽
+    CH3: [115,108,128,136,122,118,132,140,120,126,112], // 왼발 뒤꿈치
+    CH4: [42, 39, 50, 45, 54, 47, 58, 52, 43, 40, 45],  // 오른발 발가락
+    CH5: [84, 90, 99, 87, 94, 106,101, 96, 89, 98, 86], // 오른발 안쪽
+    CH6: [66, 74, 72, 78, 64, 85, 77, 81, 69, 73, 67],  // 오른발 바깥쪽
+    CH7: [122,114,136,143,129,125,139,148,127,133,119], // 오른발 뒤꿈치
+  };
+
+  const mkDataset = (label, values, color, dashed) => ({
+    label,
+    data: values,
+    borderColor: color,
+    backgroundColor: color + '18',
+    tension: 0.4,
+    fill: false,
+    pointRadius: 3,
+    pointHoverRadius: 5,
+    borderDash: dashed ? [6, 4] : [],
+    borderWidth: 2,
+  });
+
+  const chart = new Chart(document.getElementById('historyChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        mkDataset('왼발 뒤꿈치 (CH3)',   data.CH3, '#3b82f6', false),
+        mkDataset('오른발 뒤꿈치 (CH7)', data.CH7, '#f87171', true),
+        mkDataset('왼발 안쪽 (CH1)',   data.CH1, '#22d3ee', false),
+        mkDataset('오른발 안쪽 (CH5)', data.CH5, '#fb923c', true),
+        mkDataset('왼발 바깥쪽 (CH2)',   data.CH2, '#818cf8', false),
+        mkDataset('오른발 바깥쪽 (CH6)', data.CH6, '#fbbf24', true),
+        mkDataset('왼발 발가락 (CH0)',   data.CH0, '#6ee7b7', false),
+        mkDataset('오른발 발가락 (CH4)', data.CH4, '#fca5a5', true),
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#1e2330',
+          titleColor: '#94a3b8',
+          bodyColor: '#e2e8f0',
+          borderColor: '#2a3040',
+          borderWidth: 1,
+          callbacks: {
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y} kPa`,
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#475569', font: { size: 11 } },
+          grid: { color: '#1e2330' },
+        },
+        y: {
+          min: 0,
+          max: 180,
+          ticks: {
+            color: '#475569',
+            font: { size: 11 },
+            callback: v => v + ' kPa',
+          },
+          grid: { color: '#1e2330' },
+        }
+      }
+    }
+  });
+
+  // 체크박스 → 차트 토글
+  document.querySelectorAll('.cb-item').forEach(label => {
+    const cb  = label.querySelector('input[type="checkbox"]');
+    const idx = parseInt(label.dataset.idx);
+
+    cb.addEventListener('change', () => {
+      chart.data.datasets[idx].hidden = !cb.checked;
+      chart.update();
+      label.classList.toggle('off', !cb.checked);
+    });
+  });
+</script>
+</body>
+</html>
